@@ -1,0 +1,146 @@
+// Fees Module Mock Data
+export const feesStats = {
+  totalCollected: "₹4,25,000",
+  pendingAmount: "₹1,12,000",
+  overdueAmount: "₹15,000",
+  thisMonthCollected: "₹2,500",
+};
+
+export const collectionTrend = [
+  { month: "Jan", collected: 68000, due: 18000 },
+  { month: "Feb", collected: 72000, due: 14500 },
+  { month: "Mar", collected: 81000, due: 12500 },
+  { month: "Apr", collected: 76000, due: 13800 },
+  { month: "May", collected: 84000, due: 9800 },
+  { month: "Jun", collected: 90000, due: 7200 },
+];
+
+export const feeDistribution = [
+  { name: "Monthly", value: 48, color: "#10b981" },
+  { name: "Admission", value: 22, color: "#6366f1" },
+  { name: "Exam", value: 18, color: "#f59e0b" },
+  { name: "Transport", value: 12, color: "#ec4899" },
+];
+
+export const feesStudents = [
+  {
+    id: 1,
+    name: "Rahul Sharma",
+    admissionNo: "ADM001",
+    class: "Class 1",
+    section: "A",
+    father: "Mahesh Sharma",
+    dob: "12 May 2015",
+    phone: "9876543210",
+  },
+  {
+    id: 2,
+    name: "Sneha Kapur",
+    admissionNo: "ADM042",
+    class: "Class 1",
+    section: "B",
+    father: "Ravi Kapur",
+    dob: "20 Aug 2014",
+    phone: "9988776655",
+  },
+  {
+    id: 3,
+    name: "Arjun Singh",
+    admissionNo: "ADM105",
+    class: "Class 2",
+    section: "A",
+    father: "Jaspreet Singh",
+    dob: "05 Jan 2014",
+    phone: "7766554433",
+  },
+  {
+    id: 4,
+    name: "Ishita Roy",
+    admissionNo: "ADM089",
+    class: "Class 1",
+    section: "A",
+    father: "Rajesh Roy",
+    dob: "15 Mar 2015",
+    phone: "8877665544",
+  },
+];
+
+export const feeCollectionDetail = {
+  student: {
+    name: "Rahul Sharma",
+    admissionNo: "ADM001",
+    rollNo: "12",
+    class: "Class 1 (A)",
+    father: "Mahesh Sharma",
+    mother: "Sunita Sharma",
+    phone: "9876543210",
+    address: "H.No 123, Sector 4, New Delhi",
+    joiningDate: "01 Apr 2023",
+  },
+  ledger: [
+    {
+      id: 1,
+      group: "Library Fees",
+      code: "LIB-01",
+      dueDate: "10 Jan 2024",
+      status: "Paid",
+      amount: "500",
+      fine: "0",
+      discount: "0",
+      paid: "500",
+      balance: "0",
+    },
+    {
+      id: 2,
+      group: "Monthly Fees",
+      code: "JAN-TUI",
+      dueDate: "10 Jan 2024",
+      status: "Partial",
+      amount: "2500",
+      fine: "100",
+      discount: "0",
+      paid: "1000",
+      balance: "1600",
+    },
+    {
+      id: 3,
+      group: "Exam Fees",
+      code: "EXM-Q1",
+      dueDate: "20 Jan 2024",
+      status: "Unpaid",
+      amount: "500",
+      fine: "0",
+      discount: "0",
+      paid: "0",
+      balance: "500",
+    },
+    {
+      id: 4,
+      group: "Monthly Fees",
+      code: "FEB-TUI",
+      dueDate: "10 Feb 2024",
+      status: "Unpaid",
+      amount: "2500",
+      fine: "0",
+      discount: "0",
+      paid: "0",
+      balance: "2500",
+    },
+  ],
+  payments: [
+    {
+      id: "PAY-1024",
+      date: "12 Jan 2024",
+      mode: "Cash",
+      amount: "500",
+      group: "Library Fees",
+    },
+    {
+      id: "PAY-1089",
+      date: "15 Jan 2024",
+      mode: "Online",
+      amount: "1000",
+      group: "Monthly Fees (Jan)",
+    },
+  ],
+};
