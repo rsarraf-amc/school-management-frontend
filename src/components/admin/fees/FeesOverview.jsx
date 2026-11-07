@@ -96,6 +96,10 @@ export default function FeesOverview() {
 
   return (
     <div className="space-y-8">
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        Collection totals and trend charts are sample previews; the backend does not currently expose aggregate fee reporting.
+      </p>
+
       {/* Quick Actions Navigation */}
       <SectionCard
         title="Quick Actions"

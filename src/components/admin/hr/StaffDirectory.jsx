@@ -1,20 +1,68 @@
-import React, { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Eye, Edit, Trash2, Mail, Phone, MapPin } from "lucide-react";
 import DataTable from "../../ui/DataTable";
 import FilterBar from "../../ui/FilterBar";
 import FilterItem from "../../ui/FilterItem";
-import { staffList, departments } from "../../../mock/hrData";
+import { apiService } from "../../../services/apiService";
 
 const StaffDirectory = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [viewMode, setViewMode] = useState("card"); // 'card' or 'list'
+  const [staffList, setStaffList] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filteredStaff = staffList.filter((staff) => {
-    const matchesSearch = staff.name.toLowerCase().includes(searchTerm.toLowerCase()) || staff.staffId.toLowerCase().includes(searchTerm.toLowerCase());
+  useEffect(() => {
+    let active = true;
+    Promise.all([apiService.getAllEmployees(), apiService.departments.list(), apiService.designations.list()])
+      .then(([employees, departmentRecords, designationRecords]) => {
+        if (!active) return;
+        setDepartments(departmentRecords);
+        const departmentNames = new Map(
+          departmentRecords.map((department) => [String(department.id), department.departmentName]),
+        );
+        const designationNames = new Map(
+          designationRecords.map((designation) => [String(designation.id), designation.designationName]),
+        );
+        setStaffList(employees.map((employee) => ({
+          ...employee,
+          name: [employee.firstName, employee.lastName].filter(Boolean).join(" "),
+          staffId: employee.employeeNumber,
+          role: employee.roleId,
+          department: departmentNames.get(String(employee.departmentId)) || employee.departmentId,
+          designation: designationNames.get(String(employee.designationId)) || employee.designationId,
+          phone: employee.contactNumber,
+        })));
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredStaff = useMemo(() => staffList.filter((staff) => {
+    const query = searchTerm.toLowerCase();
+    const matchesSearch = staff.name.toLowerCase().includes(query) || String(staff.staffId || "").toLowerCase().includes(query);
     const matchesDept = departmentFilter ? staff.department === departmentFilter : true;
     return matchesSearch && matchesDept;
-  });
+  }), [departmentFilter, searchTerm, staffList]);
+
+  const handleDelete = async (staff) => {
+    if (!window.confirm(`Delete ${staff.name}?`)) return;
+    try {
+      await apiService.deleteEmployee(staff.id);
+      setStaffList((records) => records.filter((record) => record.id !== staff.id));
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  };
 
   const columns = [
     { header: "Staff ID", accessor: "staffId", render: (row) => <span className="font-bold text-slate-900">{row.staffId}</span> },
@@ -28,10 +76,13 @@ const StaffDirectory = () => {
   const actions = [
     { icon: Eye, label: "View Profile", onClick: () => {} },
     { icon: Edit, label: "Edit Staff", onClick: () => {} },
+    { icon: Trash2, label: "Delete Staff", onClick: handleDelete, variant: "danger" },
   ];
 
   return (
     <div className="space-y-6">
+      {error && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">{error}</p>}
+      {loading && <p className="rounded-xl bg-white p-4 text-sm font-medium text-slate-500">Loading staff...</p>}
       <FilterBar title="Staff Directory" description="Search and filter the complete staff database." onFilter={() => {}} onReset={() => { setSearchTerm(""); setDepartmentFilter(""); }}>
         <FilterItem label="Search Staff">
           <div className="relative">
@@ -42,7 +93,7 @@ const StaffDirectory = () => {
         <FilterItem label="Department">
            <select className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium appearance-none" value={departmentFilter} onChange={(e) => setDepartmentFilter(e.target.value)}>
               <option value="">All Departments</option>
-              {departments.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+              {departments.map(d => <option key={d.id} value={d.departmentName}>{d.departmentName}</option>)}
            </select>
         </FilterItem>
       </FilterBar>
@@ -76,7 +127,7 @@ const StaffDirectory = () => {
                </div>
                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between">
                   <button className="text-xs font-bold text-slate-600 flex items-center gap-1 hover:text-indigo-600"><Eye size={16}/> Profile</button>
-                  <button className="text-xs font-bold text-slate-600 flex items-center gap-1 hover:text-rose-600"><Trash2 size={16}/> Delete</button>
+                  <button onClick={() => handleDelete(staff)} className="text-xs font-bold text-slate-600 flex items-center gap-1 hover:text-rose-600"><Trash2 size={16}/> Delete</button>
                </div>
             </div>
           ))}

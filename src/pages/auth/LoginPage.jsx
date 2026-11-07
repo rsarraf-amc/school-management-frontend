@@ -34,12 +34,12 @@ export default function LoginPage() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4 rounded-md shadow-sm">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Email address</label>
+              <label className="block text-sm font-medium text-gray-700">Email or username</label>
               <input 
-                type="email" required 
+                type="text" required
                 value={email} onChange={e => setEmail(e.target.value)}
                 className="w-full px-3 py-2 mt-1 border rounded-md focus:outline-none focus:ring focus:border-blue-300" 
-                placeholder="admin@school.com"
+                placeholder="name@school.com"
               />
             </div>
             <div>
@@ -63,13 +63,6 @@ export default function LoginPage() {
             </button>
           </div>
         </form>
-        
-        <div className="text-sm text-center text-gray-500 mt-4 space-y-1">
-          <p className="font-semibold">Demo accounts:</p>
-          <p>Admin: admin@school.com | password</p>
-          <p>Teacher: teacher@school.com | password</p>
-          <p>Student: student@school.com | password</p>
-        </div>
       </div>
     </div>
   );

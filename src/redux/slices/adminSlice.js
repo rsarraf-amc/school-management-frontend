@@ -17,6 +17,8 @@ const initialState = {
   classes: [],
   status: 'idle',
   error: null,
+  teachersError: null,
+  classesError: null,
 };
 
 const adminSlice = createSlice({
@@ -29,7 +31,9 @@ const adminSlice = createSlice({
       .addCase(fetchAllStudents.fulfilled, (state, action) => { state.status = 'succeeded'; state.students = action.payload; })
       .addCase(fetchAllStudents.rejected, (state, action) => { state.status = 'failed'; state.error = action.payload; })
       .addCase(fetchAllTeachers.fulfilled, (state, action) => { state.teachers = action.payload; })
-      .addCase(fetchAllClasses.fulfilled, (state, action) => { state.classes = action.payload; });
+      .addCase(fetchAllTeachers.rejected, (state, action) => { state.teachersError = action.payload; })
+      .addCase(fetchAllClasses.fulfilled, (state, action) => { state.classes = action.payload; })
+      .addCase(fetchAllClasses.rejected, (state, action) => { state.classesError = action.payload; });
   }
 });
 

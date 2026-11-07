@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Eye,
@@ -8,47 +8,103 @@ import {
   UserPlus,
   Users,
   Activity,
-  ArrowLeft,
   MoreHorizontal,
 } from "lucide-react";
 import DataTable from "../../ui/DataTable";
 import FilterBar from "../../ui/FilterBar";
 import FilterItem from "../../ui/FilterItem";
 import StatCard from "../../ui/StatCard";
-import { students, classes, sections } from "../../../mock/studentData";
-import { studentStats } from "../../../mock/studentAnalyticsData";
+import { apiService } from "../../../services/apiService";
 
 export default function StudentListing() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClass, setSelectedClass] = useState("");
   const [selectedSection, setSelectedSection] = useState("");
-  const [filteredData, setFilteredData] = useState(students);
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const handleFilter = () => {
-    let data = students;
-    if (searchTerm) {
-      data = data.filter(
-        (s) =>
-          s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.admissionNo.toLowerCase().includes(searchTerm.toLowerCase()),
-      );
-    }
-    if (selectedClass) {
-      data = data.filter((s) => s.class === selectedClass);
-    }
-    if (selectedSection) {
-      data = data.filter((s) => s.section === selectedSection);
-    }
-    setFilteredData(data);
-  };
+  useEffect(() => {
+    let active = true;
+    Promise.all([apiService.getAllStudents(), apiService.getAllClasses()])
+      .then(([studentRecords, classRecords]) => {
+        if (!active) return;
+        setStudents(studentRecords);
+        setClasses(classRecords);
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const displayStudents = useMemo(
+    () =>
+      students.map((student) => ({
+        ...student,
+        name: [student.firstName, student.lastName].filter(Boolean).join(" "),
+        admissionNo: student.admissionNumber,
+        rollNo: student.rollNumber,
+        class: student.class || student.classModel?.name || "",
+        fatherName: student.guardianName || "",
+        photo: student.profilePhotoUrl || "",
+      })),
+    [students],
+  );
+
+  const filteredData = displayStudents.filter((student) => {
+    const query = searchTerm.toLowerCase();
+    const matchesSearch =
+      !query ||
+      student.name.toLowerCase().includes(query) ||
+      String(student.admissionNo || "").toLowerCase().includes(query);
+    const matchesClass =
+      !selectedClass || String(student.class) === String(selectedClass);
+    const matchesSection =
+      !selectedSection || student.section === selectedSection;
+    return matchesSearch && matchesClass && matchesSection;
+  });
+  const sections = [...new Set(students.map((student) => student.section).filter(Boolean))];
+
+  const handleFilter = () => setSearchTerm(searchTerm.trim());
 
   const handleReset = () => {
     setSearchTerm("");
     setSelectedClass("");
     setSelectedSection("");
-    setFilteredData(students);
   };
+
+  const handleDelete = async (student) => {
+    if (!window.confirm(`Are you sure you want to delete ${student.name}?`)) {
+      return;
+    }
+    try {
+      await apiService.deleteStudent(student.id);
+      setStudents((records) =>
+        records.filter((record) => record.id !== student.id),
+      );
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  };
+
+  const currentMonthAdmissions = students.filter((student) => {
+    const admissionDate = new Date(student.admissionDate || student.createdAt);
+    const now = new Date();
+    return (
+      !Number.isNaN(admissionDate.getTime()) &&
+      admissionDate.getMonth() === now.getMonth() &&
+      admissionDate.getFullYear() === now.getFullYear()
+    );
+  }).length;
 
   const columns = [
     {
@@ -69,11 +125,17 @@ export default function StudentListing() {
       render: (row) => (
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
-            <img
-              src={row.photo}
-              alt={row.name}
-              className="w-full h-full object-cover"
-            />
+            {row.photo ? (
+              <img
+                src={row.photo}
+                alt={row.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="flex h-full items-center justify-center font-bold text-slate-500">
+                {row.name.charAt(0) || "S"}
+              </span>
+            )}
           </div>
           <div>
             <p className="font-bold text-slate-900">{row.name}</p>
@@ -100,7 +162,7 @@ export default function StudentListing() {
       ),
     },
     {
-      header: "Father Name",
+      header: "Guardian",
       accessor: "fatherName",
     },
     {
@@ -118,10 +180,6 @@ export default function StudentListing() {
         </span>
       ),
     },
-    {
-      header: "Status",
-      accessor: "status",
-    },
   ];
 
   const actions = [
@@ -138,11 +196,7 @@ export default function StudentListing() {
     {
       icon: Trash2,
       label: "Delete",
-      onClick: (row) => {
-        if (window.confirm(`Are you sure you want to delete ${row.name}?`)) {
-          console.log("Deleting:", row.id);
-        }
-      },
+      onClick: handleDelete,
       variant: "danger",
     },
   ];
@@ -153,26 +207,37 @@ export default function StudentListing() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
           title="Total Students"
-          value={studentStats.totalStudents.toLocaleString()}
+          value={students.length.toLocaleString()}
           icon={<Users size={20} />}
           color="indigo"
           trend="Total"
         />
         <StatCard
-          title="Active Now"
-          value={studentStats.activeStudents.toLocaleString()}
+          title="Classes"
+          value={classes.length.toLocaleString()}
           icon={<Activity size={20} />}
           color="emerald"
-          trend="94.5%"
+          trend="Current"
         />
         <StatCard
           title="New Admissions"
-          value={`+${studentStats.newAdmissions}`}
+          value={`+${currentMonthAdmissions}`}
           icon={<UserPlus size={20} />}
           color="amber"
           trend="This Month"
         />
       </div>
+
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">
+          {error}
+        </p>
+      )}
+      {loading && (
+        <p className="rounded-xl bg-white p-4 text-sm font-medium text-slate-500">
+          Loading students...
+        </p>
+      )}
 
       {/* Filters */}
       <FilterBar
@@ -203,9 +268,9 @@ export default function StudentListing() {
             onChange={(e) => setSelectedClass(e.target.value)}
           >
             <option value="">All Classes</option>
-            {classes.map((c) => (
-              <option key={c} value={c}>
-                Class {c}
+            {classes.map((classRecord) => (
+              <option key={classRecord.id} value={classRecord.name}>
+                {classRecord.name}
               </option>
             ))}
           </select>

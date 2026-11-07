@@ -1,3 +1,4 @@
+import { createElement, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { 
   User, 
@@ -10,20 +11,67 @@ import {
   ArrowLeft,
   Edit
 } from "lucide-react";
-import { students } from "../../../mock/studentData";
+import { apiService } from "../../../services/apiService";
+
+function DetailItem({ icon, label, value }) {
+  return (
+    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:border-indigo-100 hover:shadow-sm transition-all duration-300">
+      <div className="w-10 h-10 bg-white text-indigo-600 rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+        {createElement(icon, { size: 18 })}
+      </div>
+      <div>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+        <p className="text-sm font-bold text-slate-800">{value || "Not Provided"}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function StudentProfileView() {
   const { id } = useParams();
   const navigate = useNavigate();
-  
-  // Find student in mock data
-  const student = students.find((s) => s.id === parseInt(id));
+  const [student, setStudent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    apiService
+      .getStudentById(id)
+      .then((record) => {
+        if (!active) return;
+        setStudent({
+          ...record,
+          name: [record.firstName, record.lastName].filter(Boolean).join(" "),
+          photo: record.profilePhotoUrl || "",
+          class: record.class || "",
+          rollNo: record.rollNumber,
+          admissionNo: record.admissionNumber,
+          dob: record.dateOfBirth,
+          fatherName: record.guardianName,
+          phone: record.mobileNumber,
+        });
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  if (loading) {
+    return <p className="rounded-xl bg-white p-6 text-sm text-slate-500">Loading student profile...</p>;
+  }
 
   if (!student) {
     return (
       <div className="bg-white p-12 rounded-3xl text-center border border-slate-100 shadow-sm">
-        <h2 className="text-2xl font-black text-slate-900 mb-2">Student Not Found</h2>
-        <p className="text-slate-500 mb-6">The student with ID {id} could not be located.</p>
+        <h2 className="text-2xl font-black text-slate-900 mb-2">{error ? "Unable to Load Student" : "Student Not Found"}</h2>
+        <p role={error ? "alert" : undefined} className="text-slate-500 mb-6">{error || `The student with ID ${id} could not be located.`}</p>
         <button 
           onClick={() => navigate("../list")}
           className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold"
@@ -33,18 +81,6 @@ export default function StudentProfileView() {
       </div>
     );
   }
-
-  const DetailItem = ({ icon: Icon, label, value }) => (
-    <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:bg-white hover:border-indigo-100 hover:shadow-sm transition-all duration-300">
-      <div className="w-10 h-10 bg-white text-indigo-600 rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-        <Icon size={18} />
-      </div>
-      <div>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
-        <p className="text-sm font-bold text-slate-800">{value || "Not Provided"}</p>
-      </div>
-    </div>
-  );
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -75,11 +111,17 @@ export default function StudentProfileView() {
         <div className="px-8 -mt-20 relative z-10 flex flex-col md:flex-row items-end gap-6">
           <div className="w-40 h-40 rounded-[2.5rem] p-2 bg-white shadow-2xl relative group">
             <div className="w-full h-full rounded-[2rem] overflow-hidden border-2 border-slate-50 relative">
-              <img 
-                src={student.photo} 
-                alt={student.name} 
-                className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700" 
-              />
+              {student.photo ? (
+                <img
+                  src={student.photo}
+                  alt={student.name}
+                  className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center bg-indigo-50 text-4xl font-black text-indigo-600">
+                  {student.name.charAt(0) || "S"}
+                </div>
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
             </div>
             <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-500 text-white rounded-2xl flex items-center justify-center border-4 border-white shadow-lg ring-1 ring-emerald-500/20">
@@ -90,13 +132,6 @@ export default function StudentProfileView() {
           <div className="flex-1 pb-4">
             <div className="flex items-center gap-3 mb-1">
               <h1 className="text-3xl font-black text-slate-900 tracking-tight">{student.name}</h1>
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border-2 ${
-                student.status === 'Active' 
-                ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
-                : 'bg-rose-50 text-rose-600 border-rose-100'
-              }`}>
-                {student.status}
-              </span>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-slate-500 font-bold text-sm">
               <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 rounded-lg">

@@ -7,7 +7,6 @@ export const loginUser = createAsyncThunk(
   async ({ email, password }, thunkAPI) => {
     try {
       const data = await apiService.login(email, password);
-      // Store token in local storage (mock behavior)
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       return data;
@@ -17,7 +16,7 @@ export const loginUser = createAsyncThunk(
   }
 );
 
-// Initial State (check local storage for persistent mock session)
+// Restore the authenticated session from local storage.
 const storedUser = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
 const storedToken = localStorage.getItem('token') || null;
 

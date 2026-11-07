@@ -40,7 +40,7 @@ import {
 export default function StudentDashboard() {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
-  const { profile, status } = useSelector((state) => state.student);
+  const { profile, status, error } = useSelector((state) => state.student);
 
   useEffect(() => {
     if (user && user.id && status === "idle") {
@@ -53,6 +53,14 @@ export default function StudentDashboard() {
       <div className="flex items-center justify-center p-20">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
       </div>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <p role="alert" className="rounded-xl bg-rose-50 p-5 text-sm font-medium text-rose-700">
+        {error}
+      </p>
     );
   }
 

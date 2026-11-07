@@ -1,57 +1,80 @@
-import { useState } from "react";
-import { Plus, Edit2, Trash2, Search, Filter, Tag } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Plus, Search, Tag } from "lucide-react";
 import SlideOver from "../../ui/SlideOver";
+import { apiService } from "../../../services/apiService";
+
+const frequencies = ["monthly", "term", "annual", "one-time"];
+const emptyFeeType = { name: "", amount: "", frequency: "", description: "" };
 
 export default function FeesType() {
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const types = [
-    {
-      id: 1,
-      name: "January Tuition",
-      group: "Monthly Fees",
-      code: "TUI-JAN",
-      description: "Tuition fee for Jan 2024",
-    },
-    {
-      id: 2,
-      name: "Admission Fee 2024",
-      group: "Admission Fees",
-      code: "ADM-24",
-      description: "One-time admission charge",
-    },
-    {
-      id: 3,
-      name: "Quarterly Exam",
-      group: "Exam Fees",
-      code: "EXM-Q1",
-      description: "First quarter exam charges",
-    },
-    {
-      id: 4,
-      name: "Van Route A",
-      group: "Transport Fees",
-      code: "TRA-RA",
-      description: "Monthly transport for Route A",
-    },
-    {
-      id: 5,
-      name: "Sports Annual",
-      group: "Admission Fees",
-      code: "SPT-AN",
-      description: "Annual sports development fund",
-    },
-  ];
+  const [feeTypes, setFeeTypes] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [formData, setFormData] = useState(emptyFeeType);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-  const groups = [
-    "Monthly Fees",
-    "Admission Fees",
-    "Exam Fees",
-    "Transport Fees",
-    "Library Fees",
-  ];
+  useEffect(() => {
+    let active = true;
+    apiService
+      .getFeeTypes()
+      .then((records) => {
+        if (active) setFeeTypes(records);
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const filteredFeeTypes = useMemo(() => {
+    const query = searchTerm.toLowerCase();
+    return feeTypes.filter((feeType) =>
+      [feeType.name, feeType.frequency, feeType.description]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [feeTypes, searchTerm]);
+
+  const updateField = (event) => {
+    setFormData((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+    }));
+  };
+
+  const saveFeeType = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const createdFeeType = await apiService.createFeeType({
+        ...formData,
+        amount: Number(formData.amount),
+      });
+      setFeeTypes((records) => [...records, createdFeeType]);
+      setFormData(emptyFeeType);
+      setIsFormOpen(false);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6 relative">
+      {error && (
+        <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">
+          {error}
+        </p>
+      )}
       <div className="flex-1 space-y-6">
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-8">
@@ -62,15 +85,12 @@ export default function FeesType() {
               />
               <input
                 type="text"
-                placeholder="Search types..."
+                placeholder="Search fee types..."
                 className="w-full bg-slate-50 border-none rounded-2xl pl-12 pr-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-rose-500/20 transition-all"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
               />
             </div>
-
-            <button className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-all">
-              <Filter size={18} />
-              Filter
-            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -78,53 +98,37 @@ export default function FeesType() {
               <thead className="bg-gradient-to-r from-slate-50 to-slate-100">
                 <tr className="border-b border-slate-200 text-xs font-bold uppercase text-slate-700 tracking-wider">
                   <th className="px-4 py-4">Name</th>
-                  <th className="px-4 py-4">Code</th>
-                  <th className="px-4 py-4">Group</th>
+                  <th className="px-4 py-4">Amount</th>
+                  <th className="px-4 py-4">Frequency</th>
                   <th className="px-4 py-4">Description</th>
-                  <th className="px-4 py-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {types.map((type) => (
-                  <tr
-                    key={type.id}
-                    className="group hover:bg-slate-50 transition-all duration-200"
-                  >
+                {filteredFeeTypes.map((feeType) => (
+                  <tr key={feeType.id} className="group hover:bg-slate-50 transition-all duration-200">
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-slate-50 text-slate-400 rounded-lg flex items-center justify-center group-hover:bg-rose-50 group-hover:text-rose-500 transition-colors">
                           <Tag size={14} />
                         </div>
-                        <span className="text-sm font-normal text-slate-700">
-                          {type.name}
-                        </span>
+                        <span className="text-sm font-normal text-slate-700">{feeType.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-sm font-normal text-slate-700">
-                      {type.code}
-                    </td>
-                    <td className="px-4 py-4">
-                      <span className="px-3 py-1 bg-slate-100 text-slate-600 text-[10px] font-black rounded-lg uppercase tracking-widest group-hover:bg-rose-50 group-hover:text-rose-600">
-                        {type.group}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-sm font-normal text-slate-600 max-w-xs truncate">
-                      {type.description}
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-2 hover:bg-white hover:text-blue-500 rounded-xl transition-all text-slate-400 shadow-sm border border-transparent hover:border-blue-100">
-                          <Edit2 size={16} />
-                        </button>
-                        <button className="p-2 hover:bg-white hover:text-rose-500 rounded-xl transition-all text-slate-400 shadow-sm border border-transparent hover:border-rose-100">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
+                    <td className="px-4 py-4 text-sm font-normal text-slate-700">₹{feeType.amount}</td>
+                    <td className="px-4 py-4 text-sm font-normal capitalize text-slate-700">{feeType.frequency}</td>
+                    <td className="px-4 py-4 text-sm font-normal text-slate-600 max-w-xs truncate">{feeType.description}</td>
                   </tr>
                 ))}
+                {!loading && !error && filteredFeeTypes.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">
+                      {searchTerm ? "No fee types match your search." : "No fee types have been configured."}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
+            {loading && <p className="p-5 text-sm text-slate-500">Loading fee types...</p>}
           </div>
         </div>
       </div>
@@ -143,56 +147,71 @@ export default function FeesType() {
         onClose={() => setIsFormOpen(false)}
         title="Add Fee Type"
       >
-        <form className="space-y-6">
+        <form className="space-y-6" onSubmit={saveFeeType}>
           <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">
               Type Name
             </label>
             <input
+              name="name"
               type="text"
+              required
+              value={formData.name}
+              onChange={updateField}
               placeholder="e.g. Activity Fee"
               className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-rose-500/20 transition-all"
             />
           </div>
-
           <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">
-              Fee Group
-            </label>
-            <select className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-rose-500/20 transition-all appearance-none cursor-pointer">
-              <option value="">Select Group</option>
-              {groups.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">
-              Fee Code
+              Amount
             </label>
             <input
-              type="text"
-              placeholder="e.g. ACT-01"
+              name="amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              value={formData.amount}
+              onChange={updateField}
               className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-rose-500/20 transition-all"
             />
           </div>
-
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">
+              Frequency
+            </label>
+            <select
+              name="frequency"
+              required
+              value={formData.frequency}
+              onChange={updateField}
+              className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-rose-500/20 transition-all appearance-none cursor-pointer"
+            >
+              <option value="">Select frequency</option>
+              {frequencies.map((frequency) => (
+                <option key={frequency} value={frequency}>{frequency}</option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-1.5">
             <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest px-1">
               Description
             </label>
             <textarea
+              name="description"
+              value={formData.description}
+              onChange={updateField}
               placeholder="Details..."
               rows={3}
               className="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-rose-500/20 transition-all resize-none"
-            ></textarea>
+            />
           </div>
-
-          <button className="w-full bg-rose-600 text-white py-4 rounded-2xl font-black text-sm hover:bg-rose-700 transition-all active:scale-95 shadow-lg shadow-rose-600/20">
-            Save Fee Type
+          <button
+            disabled={saving}
+            className="w-full bg-rose-600 text-white py-4 rounded-2xl font-black text-sm hover:bg-rose-700 transition-all active:scale-95 shadow-lg shadow-rose-600/20 disabled:opacity-60"
+          >
+            {saving ? "Saving..." : "Save Fee Type"}
           </button>
         </form>
       </SlideOver>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import {
   fetchAllStudents,
   fetchAllTeachers,
@@ -62,8 +63,14 @@ const IconMap = {
 
 export default function AdminDashboard() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
-  const { students, status } = useSelector((state) => state.admin);
+  const { students, teachers, status, error, teachersError } = useSelector((state) => state.admin);
+  const dashboardStudents = students.map((student) => ({
+    ...student,
+    name: [student.firstName, student.lastName].filter(Boolean).join(" "),
+    classId: student.class || student.classModel?.name || student.classId,
+  }));
 
   useEffect(() => {
     if (status === "idle") {
@@ -78,6 +85,14 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-center p-20">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
+    );
+  }
+
+  if (status === "failed") {
+    return (
+      <p role="alert" className="rounded-xl bg-rose-50 p-5 text-sm font-medium text-rose-700">
+        {error}
+      </p>
     );
   }
 
@@ -96,30 +111,16 @@ export default function AdminDashboard() {
       ),
     },
     { header: "Class", accessor: "classId", width: 140 },
-    {
-      header: "Attendance",
-      accessor: "attendance",
-      width: 170,
-      render: (row) => (
-        <div className="flex items-center gap-2">
-          <div className="w-full bg-slate-100 rounded-full h-1.5 max-w-[120px]">
-            <div
-              className="bg-emerald-500 h-1.5 rounded-full"
-              style={{ width: `${row.attendance ?? 0}%` }}
-            />
-          </div>
-          <span className="text-xs font-black text-slate-600">
-            {row.attendance ?? 0}%
-          </span>
-        </div>
-      ),
-    },
+    { header: "Admission Date", accessor: "admissionDate", width: 150 },
     {
       header: "Action",
       accessor: "id",
       width: 120,
       render: (row) => (
-        <button className="bg-slate-50 text-slate-500 px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-tight hover:bg-slate-100 hover:text-slate-900 transition-all">
+        <button
+          onClick={() => navigate(`/admin/student/view/${row.id}`)}
+          className="bg-slate-50 text-slate-500 px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-tight hover:bg-slate-100 hover:text-slate-900 transition-all"
+        >
           Details
         </button>
       ),
@@ -141,13 +142,26 @@ export default function AdminDashboard() {
           </p>
         </div>
 
+        {(error || teachersError) && (
+          <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm font-medium text-rose-700">
+            {error || teachersError}
+          </p>
+        )}
+
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95">
+          <button
+            onClick={() => navigate("/admin/student/add")}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
+          >
             <Plus size={18} className="stroke-[3]" />
             New Admission
           </button>
         </div>
       </div>
+
+      <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+        Financial, attendance, calendar, and activity summaries are sample previews; the backend does not currently expose aggregate reporting endpoints.
+      </p>
 
       {/* Summary Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 xl:gap-6">
@@ -191,14 +205,11 @@ export default function AdminDashboard() {
 
         <StatCard
           title="Total Students"
-          value={dashboardStats.totalStudents}
-          subValue={dashboardStats.presentStudents}
-          subLabel="Present Today"
+          value={students.length.toLocaleString()}
+          subValue={students.length.toLocaleString()}
+          subLabel="Current enrollment"
           icon={<GraduationCap size={16} />}
-          trend={`${(
-            (dashboardStats.presentStudents / dashboardStats.totalStudents) *
-            100
-          ).toFixed(1)}%`}
+          trend="Live"
           isPositive={true}
           color="indigo"
           sparklineData={[
@@ -212,12 +223,12 @@ export default function AdminDashboard() {
         />
 
         <StatCard
-          title="Total Staff"
-          value={dashboardStats.totalStaff}
-          subValue={dashboardStats.presentStaff}
-          subLabel="Present Today"
+          title="Teachers"
+          value={teachers.length.toLocaleString()}
+          subValue={teachers.length.toLocaleString()}
+          subLabel="Current teachers"
           icon={<Users size={16} />}
-          trend="96.4%"
+          trend="Live"
           isPositive={true}
           color="amber"
           sparklineData={[
@@ -390,7 +401,7 @@ export default function AdminDashboard() {
           <div className="overflow-x-auto px-4 pb-4">
             <DataTable
               columns={recentStudentColumns}
-              data={students.slice(0, 5)}
+              data={dashboardStudents.slice(0, 5)}
               rowKey="id"
               tableClassName="min-w-full"
               containerClassName="bg-transparent shadow-none border-0"
