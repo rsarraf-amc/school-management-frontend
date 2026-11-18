@@ -1,19 +1,62 @@
 import React, { useState } from "react";
-import { Plus, Edit, Trash2, Layers } from "lucide-react";
+import { Plus, Edit, Trash2, Layers, Save } from "lucide-react";
 import DataTable from "../../ui/DataTable";
-import { incomeHeads } from "../../../mock/incomeData";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
+
+const emptyForm = { name: "", description: "" };
 
 const IncomeHead = () => {
-  const [heads, setHeads] = useState(incomeHeads);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newHead, setNewHead] = useState({ name: "", description: "" });
+  const { data: heads, loading, error, reload } = useAsync(
+    () => apiService.accounts.incomeHeads.list(),
+    []
+  );
+  const [newHead, setNewHead] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
-  const handleAdd = (e) => {
+  const resetForm = () => {
+    setNewHead(emptyForm);
+    setEditingId(null);
+  };
+
+  const handleAdd = async (e) => {
     e.preventDefault();
-    const head = { ...newHead, id: heads.length + 1 };
-    setHeads([...heads, head]);
-    setNewHead({ name: "", description: "" });
-    setShowAddForm(false);
+    setSaving(true);
+    setSaveError("");
+    const payload = { name: newHead.name.trim(), description: newHead.description.trim() };
+    try {
+      if (editingId) {
+        await apiService.accounts.incomeHeads.update(editingId, payload);
+      } else {
+        await apiService.accounts.incomeHeads.create(payload);
+      }
+      resetForm();
+      await reload();
+    } catch (requestError) {
+      setSaveError(requestError.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = (row) => {
+    setEditingId(row.id);
+    setNewHead({ name: row.name || "", description: row.description || "" });
+    setSaveError("");
+  };
+
+  const handleDelete = async (row) => {
+    if (!window.confirm(`Delete income head "${row.name}"?`)) return;
+    setSaveError("");
+    try {
+      await apiService.accounts.incomeHeads.remove(row.id);
+      if (editingId === row.id) resetForm();
+      await reload();
+    } catch (requestError) {
+      setSaveError(requestError.message);
+    }
   };
 
   const columns = [
@@ -36,21 +79,17 @@ const IncomeHead = () => {
   ];
 
   const actions = [
-    {
-      icon: Edit,
-      label: "Edit",
-      onClick: (row) => alert(`Editing Head: ${row.name}`),
-    },
-    {
-      icon: Trash2,
-      label: "Delete",
-      onClick: (row) => alert(`Deleting Head: ${row.name}`),
-      variant: "danger",
-    },
+    { label: "Edit", icon: Edit, onClick: handleEdit },
+    { label: "Delete", icon: Trash2, variant: "danger", onClick: handleDelete },
   ];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      {(error || saveError) && (
+        <div className="lg:col-span-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+          {saveError || error}
+        </div>
+      )}
       {/* List Section */}
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
@@ -62,7 +101,11 @@ const IncomeHead = () => {
               </span>
             </h3>
           </div>
-          <DataTable columns={columns} data={heads} actions={actions} />
+          {loading ? (
+            <div className="px-6 py-8 text-center text-sm text-slate-500">Loading...</div>
+          ) : (
+            <DataTable columns={columns} data={heads} actions={actions} />
+          )}
         </div>
       </div>
 
@@ -72,7 +115,7 @@ const IncomeHead = () => {
           <div className="p-6 border-b border-slate-100 bg-amber-50/30">
             <h3 className="font-black text-slate-900 tracking-tight flex items-center gap-2">
               <Layers size={18} className="text-amber-600" />
-              Add Income Head
+              {editingId ? "Edit Income Head" : "Add Income Head"}
             </h3>
           </div>
           <form onSubmit={handleAdd} className="p-6 space-y-4">
@@ -103,11 +146,21 @@ const IncomeHead = () => {
             </div>
             <button
               type="submit"
-              className="w-full py-4 bg-amber-600 text-white rounded-2xl font-bold hover:bg-amber-700 transition-all text-sm shadow-lg shadow-amber-100 flex items-center justify-center gap-2 mt-4"
+              disabled={saving}
+              className="w-full disabled:opacity-50 py-4  bg-amber-600 text-white rounded-2xl font-bold hover:bg-amber-700 transition-all text-sm shadow-lg shadow-amber-100 flex items-center justify-center gap-2 mt-4"
             >
-              <Plus size={18} />
-              Add Category
+              {editingId ? <Save size={18} /> : <Plus size={18} />}
+              {saving ? "Saving..." : editingId ? "Update Category" : "Add Category"}
             </button>
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="w-full py-3 rounded-2xl font-bold text-slate-500 hover:bg-slate-50 transition-all text-sm"
+              >
+                Cancel
+              </button>
+            )}
           </form>
         </div>
       </div>

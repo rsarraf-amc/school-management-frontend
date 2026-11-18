@@ -10,15 +10,15 @@ import {
   BookOpen,
   Users as UsersIcon,
   UserCheck,
-  Clock,
-  XCircle,
 } from "lucide-react";
 
 import SectionCard from "../../ui/SectionCard";
 import QuickActionCard from "../../ui/QuickActionCard";
 import StatCard from "../../ui/StatCard";
-import { students } from "../../../mock/studentData";
-import { COLORS } from "../../../mock/studentAnalyticsData";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
+
+const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7c7c"];
 
 import {
   BarChart,
@@ -39,6 +39,8 @@ import {
 
 const StudentHub = () => {
   const navigate = useNavigate();
+  const { data, error } = useAsync(() => apiService.getAllStudents());
+  const students = useMemo(() => data || [], [data]);
 
   /* -------------------- Quick Modules -------------------- */
   const modules = useMemo(
@@ -90,19 +92,17 @@ const StudentHub = () => {
   );
 
   /* -------------------- Stats -------------------- */
-  const stats = useMemo(() => {
-    const total = students?.length || 0;
-    const active = students?.filter((s) => s.status === "Active").length || 0;
-    const pending = students?.filter((s) => s.status === "Pending").length || 0;
-    const closed = students?.filter((s) => s.status === "Closed").length || 0;
-
-    return { total, active, pending, closed };
-  }, []);
+  const stats = useMemo(
+    () => ({
+      total: students.length,
+      male: students.filter((s) => s.gender === "Male").length,
+      female: students.filter((s) => s.gender === "Female").length,
+    }),
+    [students],
+  );
 
   /* -------------------- Class Distribution -------------------- */
   const classChartData = useMemo(() => {
-    if (!students?.length) return [];
-
     const map = {};
     students.forEach((s) => {
       const cls = s.class || "Unknown";
@@ -110,15 +110,9 @@ const StudentHub = () => {
     });
 
     return Object.entries(map)
-      .map(([cls, count]) => ({
-        class: `Class ${cls}`,
-        count,
-      }))
-      .sort(
-        (a, b) =>
-          parseInt(a.class.split(" ")[1]) - parseInt(b.class.split(" ")[1]),
-      );
-  }, []);
+      .map(([cls, count]) => ({ class: cls, count }))
+      .sort((a, b) => a.class.localeCompare(b.class, undefined, { numeric: true }));
+  }, [students]);
 
   /* -------------------- Gender Distribution -------------------- */
   const genderChartData = useMemo(() => {
@@ -129,25 +123,19 @@ const StudentHub = () => {
     });
 
     return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, []);
+  }, [students]);
 
-  /* -------------------- Status Distribution -------------------- */
-  const statusChartData = useMemo(
-    () => [
-      { name: "Active", value: stats.active, color: "#10b981" },
-      { name: "Pending", value: stats.pending, color: "#f59e0b" },
-      { name: "Closed", value: stats.closed, color: "#ef4444" },
-    ],
-    [stats],
-  );
-
-  /* -------------------- Trends (Mock) -------------------- */
-  const admissionTrendData = [
-    { month: "Jan", admissions: 2 },
-    { month: "Feb", admissions: 1 },
-    { month: "Mar", admissions: 0 },
-    { month: "Apr", admissions: 2 },
-  ];
+  /* -------------------- Monthly Admissions -------------------- */
+  const admissionTrendData = useMemo(() => {
+    const map = {};
+    students.forEach((s) => {
+      const month = String(s.admissionDate || s.createdAt || "").slice(0, 7);
+      if (month) map[month] = (map[month] || 0) + 1;
+    });
+    return Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, admissions]) => ({ month, admissions }));
+  }, [students]);
 
   return (
     <div className="space-y-8">
@@ -169,7 +157,8 @@ const StudentHub = () => {
         </div>
       </SectionCard>
       {/* ------- Stats ------- */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {error && <p className="text-sm font-bold text-rose-600">{error}</p>}
+      <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           title="Total Students"
           value={stats.total}
@@ -177,22 +166,16 @@ const StudentHub = () => {
           color="indigo"
         />
         <StatCard
-          title="Active Students"
-          value={stats.active}
+          title="Male Students"
+          value={stats.male}
           icon={<UserCheck size={20} />}
           color="emerald"
         />
         <StatCard
-          title="Pending Admissions"
-          value={stats.pending}
-          icon={<Clock size={20} />}
+          title="Female Students"
+          value={stats.female}
+          icon={<UserCheck size={20} />}
           color="amber"
-        />
-        <StatCard
-          title="Closed Cases"
-          value={stats.closed}
-          icon={<XCircle size={20} />}
-          color="rose"
         />
       </div>
 
@@ -231,24 +214,6 @@ const StudentHub = () => {
                 </Pie>
                 <Tooltip />
               </RechartsPieChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
-
-        {/* Status */}
-        <SectionCard title="Admission Status">
-          <div className="p-6">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={statusChartData} layout="vertical">
-                <XAxis type="number" />
-                <YAxis dataKey="name" type="category" />
-                <Tooltip />
-                <Bar dataKey="value">
-                  {statusChartData.map((item, i) => (
-                    <Cell key={i} fill={item.color} />
-                  ))}
-                </Bar>
-              </BarChart>
             </ResponsiveContainer>
           </div>
         </SectionCard>

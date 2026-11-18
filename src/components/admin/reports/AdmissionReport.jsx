@@ -3,9 +3,25 @@ import { Download, FileText } from "lucide-react";
 import DataTable from "../../ui/DataTable";
 import FilterBar from "../../ui/FilterBar";
 import FilterItem from "../../ui/FilterItem";
-import { admissionReports } from "../../../mock/reportsData";
+import StatusMessage from "../../ui/StatusMessage";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
 
 const AdmissionReport = () => {
+  const { data: students, loading, error } = useAsync(async () => {
+    const list = await apiService.getAllStudents();
+    return (list || []).map((s) => ({
+      id: s.id,
+      admissionNo: s.admissionNumber,
+      studentName: [s.firstName, s.lastName].filter(Boolean).join(" "),
+      class: s.class,
+      section: s.section,
+      gender: s.gender,
+      admissionDate: (s.admissionDate || s.createdAt || "").slice(0, 10),
+      status: "Admitted",
+    }));
+  }, []);
+
   const columns = [
     { header: "Admission No", accessor: "admissionNo", render: (row) => <span className="font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded text-[10px] uppercase">{row.admissionNo}</span> },
     { header: "Student Name", accessor: "studentName", render: (row) => <span className="font-bold text-slate-900">{row.studentName}</span> },
@@ -59,7 +75,8 @@ const AdmissionReport = () => {
              </button>
           </div>
         </div>
-        <DataTable columns={columns} data={admissionReports} />
+        <StatusMessage loading={loading} error={error} empty={!loading && !error && !students?.length} />
+        <DataTable columns={columns} data={students || []} />
       </div>
     </div>
   );

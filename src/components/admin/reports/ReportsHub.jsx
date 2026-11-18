@@ -9,10 +9,52 @@ import {
 import SectionCard from "../../ui/SectionCard";
 import QuickActionCard from "../../ui/QuickActionCard";
 import StatCard from "../../ui/StatCard";
-import { reportStats } from "../../../mock/reportsData";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
+
+const monthKey = (value) => (value ? String(value).slice(0, 7) : "");
+const sumBy = (rows, fn) => rows.reduce((total, row) => total + (Number(fn(row)) || 0), 0);
+
+const buildStats = ({ students, payments, payrolls }) => {
+  const paid = payrolls.filter((r) => r.status === "PAID");
+  const flow = {};
+  const enroll = {};
+  payments.forEach((p) => {
+    const k = monthKey(p.paidOn);
+    if (k) (flow[k] ||= { month: k, income: 0, expense: 0 }).income += Number(p.paidAmount) || 0;
+  });
+  paid.forEach((r) => {
+    const k = monthKey(r.updatedAt || r.createdAt);
+    if (k) (flow[k] ||= { month: k, income: 0, expense: 0 }).expense += Number(r.payableAmount) || 0;
+  });
+  students.forEach((s) => {
+    const k = monthKey(s.admissionDate || s.createdAt);
+    if (k) (enroll[k] ||= { month: k, admissions: 0 }).admissions += 1;
+  });
+  const byMonth = (a, b) => a.month.localeCompare(b.month);
+  return {
+    totalRevenue: sumBy(payments, (p) => p.paidAmount),
+    totalExpenses: sumBy(paid, (r) => r.payableAmount),
+    newAdmissions: students.length,
+    payrollDisbursed: sumBy(paid, (r) => r.payableAmount),
+    financialFlow: Object.values(flow).sort(byMonth),
+    enrollmentTrend: Object.values(enroll).sort(byMonth),
+  };
+};
+
+const emptyStats = buildStats({ students: [], payments: [], payrolls: [] });
 
 const ReportsHub = () => {
   const navigate = useNavigate();
+  const { data } = useAsync(async () => {
+    const [students, payments, payrolls] = await Promise.all([
+      apiService.getAllStudents(),
+      apiService.getFeePayments(),
+      apiService.getPayrolls(),
+    ]);
+    return buildStats({ students: students || [], payments: payments || [], payrolls: payrolls || [] });
+  });
+  const reportStats = data || emptyStats;
 
   const modules = useMemo(
     () => [
@@ -43,10 +85,10 @@ const ReportsHub = () => {
 
       {/* Stats Overview */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Revenue" value={`₹${(reportStats.totalRevenue / 100000).toFixed(2)}L`} icon={<ArrowUpRight size={20} />} color="emerald" trend="+15%" />
-        <StatCard title="Total Expenses" value={`₹${(reportStats.totalExpenses / 100000).toFixed(2)}L`} icon={<ArrowDownRight size={20} />} color="rose" isPositive={false} trend="+5%" />
-        <StatCard title="New Admissions" value={reportStats.newAdmissions} icon={<Users size={20} />} color="blue" trend="+12%" />
-        <StatCard title="Payroll Disbursed" value={`₹${(reportStats.payrollDisbursed / 100000).toFixed(2)}L`} icon={<CheckCircle size={20} />} color="indigo" />
+        <StatCard title="Total Revenue" value={`₹${reportStats.totalRevenue.toLocaleString()}`} icon={<ArrowUpRight size={20} />} color="emerald" />
+        <StatCard title="Total Expenses" value={`₹${reportStats.totalExpenses.toLocaleString()}`} icon={<ArrowDownRight size={20} />} color="rose" isPositive={false} />
+        <StatCard title="Total Students" value={reportStats.newAdmissions} icon={<Users size={20} />} color="blue" />
+        <StatCard title="Payroll Disbursed" value={`₹${reportStats.payrollDisbursed.toLocaleString()}`} icon={<CheckCircle size={20} />} color="indigo" />
       </div>
 
       {/* Charts Section */}

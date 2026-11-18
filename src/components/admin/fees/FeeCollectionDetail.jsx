@@ -86,7 +86,7 @@ export default function FeeCollectionDetail() {
     setError("");
     try {
       const createdPayment = await apiService.collectFee({
-        studentId: Number(studentId),
+        studentId,
         feeTypeId: Number(payment.feeTypeId),
         paidAmount: Number(payment.paidAmount),
         paidOn: payment.paidOn,
@@ -115,7 +115,7 @@ export default function FeeCollectionDetail() {
     setError("");
     try {
       const assignedFee = await apiService.assignFee({
-        studentId: Number(studentId),
+        studentId,
         feeTypeId: Number(assignment.feeTypeId),
         session: assignment.session,
         ...(assignment.customAmount

@@ -10,12 +10,22 @@ import {
 import SectionCard from "../../ui/SectionCard";
 import QuickActionCard from "../../ui/QuickActionCard";
 import StatCard from "../../ui/StatCard";
-import { transportStats } from "../../../mock/transportData";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
+import { LoadState } from "./TransportState";
 
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#6366f1", "#8b5cf6"];
 
 const TransportHub = () => {
   const navigate = useNavigate();
+  const { data, loading, error } = useAsync(async () => {
+    const [routes, vehicles, assignments] = await Promise.all([
+      apiService.transport.routes.list(),
+      apiService.transport.vehicles.list(),
+      apiService.transport.assignments.list(),
+    ]);
+    return { routes, vehicles, assignments };
+  }, { routes: [], vehicles: [], assignments: [] });
 
   const modules = useMemo(
     () => [
@@ -31,9 +41,22 @@ const TransportHub = () => {
     []
   );
 
+  const { routes, vehicles, assignments } = data;
+
+  const perRoute = useMemo(
+    () =>
+      routes.map((route) => ({
+        name: route.routeName,
+        students: assignments.filter((a) => a.routeId === route.id).length,
+        capacity: route.vehicle?.capacity ?? 0,
+      })),
+    [routes, assignments]
+  );
+  const routeDistribution = perRoute.filter((r) => r.students > 0).map((r) => ({ name: r.name, value: r.students }));
+  const vehiclesWithDriver = vehicles.filter((v) => v.driverName).length;
+
   return (
     <div className="space-y-8">
-      {/* Quick Actions Grid */}
       <SectionCard title="Quick Actions" description="Transport network workflows">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 p-6 pt-2">
           {modules.map((mod) => (
@@ -48,54 +71,66 @@ const TransportHub = () => {
         </div>
       </SectionCard>
 
-      {/* Stats Overview */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Active Routes" value={transportStats.activeRoutes} icon={<Map size={20} />} color="indigo" />
-        <StatCard title="Total Vehicles" value={transportStats.totalVehicles} icon={<Truck size={20} />} color="emerald" />
-        <StatCard title="Assigned Students" value={transportStats.assignedStudents} icon={<Users size={20} />} color="blue" trend="+5%" />
-        <StatCard title="Total Drivers" value={transportStats.totalDrivers} icon={<Anchor size={20} />} color="amber" />
-      </div>
+      <LoadState loading={loading} error={error} />
 
-      {/* Charts Section */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <SectionCard title="Route Utilization">
-          <div className="p-6 h-[300px] flex items-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={transportStats.routeDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {transportStats.routeDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-col gap-2 pr-4">
-               {transportStats.routeDistribution.map((entry, index) => (
-                 <div key={index} className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                   <span className="text-xs font-bold text-slate-600 uppercase tracking-tighter">{entry.name} ({entry.value}%)</span>
-                 </div>
-               ))}
-            </div>
+      {!loading && !error && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Active Routes" value={routes.length} icon={<Map size={20} />} color="indigo" />
+            <StatCard title="Total Vehicles" value={vehicles.length} icon={<Truck size={20} />} color="emerald" />
+            <StatCard title="Assigned Students" value={assignments.length} icon={<Users size={20} />} color="blue" />
+            <StatCard title="Vehicles With Driver" value={vehiclesWithDriver} icon={<Anchor size={20} />} color="amber" />
           </div>
-        </SectionCard>
 
-        <SectionCard title="Capacity vs Utilized (Monthly)">
-          <div className="p-6 h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={transportStats.capacityTrend}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="capacity" fill="#cbd5e1" radius={[4, 4, 0, 0]} name="Total Capacity" />
-                <Bar dataKey="utilized" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Utilized Seats" />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <SectionCard title="Route Utilization">
+              {routeDistribution.length === 0 ? (
+                <p className="p-6 text-sm text-slate-500">No students are assigned to routes yet.</p>
+              ) : (
+                <div className="p-6 h-[300px] flex items-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={routeDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                        {routeDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex flex-col gap-2 pr-4">
+                    {routeDistribution.map((entry, index) => (
+                      <div key={entry.name} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-tighter">{entry.name} ({entry.value})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Capacity vs Assigned Students (By Route)">
+              {perRoute.length === 0 ? (
+                <p className="p-6 text-sm text-slate-500">No routes created yet.</p>
+              ) : (
+                <div className="p-6 h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={perRoute}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                      <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                      <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                      <Bar dataKey="capacity" fill="#cbd5e1" radius={[4, 4, 0, 0]} name="Vehicle Capacity" />
+                      <Bar dataKey="students" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Assigned Students" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </SectionCard>
           </div>
-        </SectionCard>
-      </div>
+        </>
+      )}
     </div>
   );
 };

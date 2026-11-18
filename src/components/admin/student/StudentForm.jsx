@@ -10,6 +10,7 @@ import {
   ArrowLeft
 } from "lucide-react";
 import SectionCard from "../../ui/SectionCard";
+import IssuedCredentials from "../../ui/IssuedCredentials";
 import { apiService } from "../../../services/apiService";
 
 /* ------ Input ------- */
@@ -89,6 +90,7 @@ export default function StudentForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [issued, setIssued] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -192,9 +194,14 @@ export default function StudentForm() {
     setSaving(true);
     setError("");
     try {
-      if (id) await apiService.updateStudent(id, payload);
-      else await apiService.createStudent(payload);
-      navigate("../list");
+      if (id) {
+        await apiService.updateStudent(id, payload);
+        navigate("../list");
+      } else {
+        const created = await apiService.createStudent(payload);
+        if (created?.credentials) setIssued(created.credentials);
+        else navigate("../list");
+      }
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -213,6 +220,15 @@ export default function StudentForm() {
         <button type="button" onClick={handleCancel} className="mt-4 rounded-xl bg-white px-4 py-2 text-slate-700">
           Back
         </button>
+      </div>
+    );
+  }
+
+  if (issued) {
+    return (
+      <div className="space-y-6 pb-12">
+        <p className="rounded-xl bg-white p-4 text-sm font-bold text-slate-700">Student saved.</p>
+        <IssuedCredentials title="Student portal login created" credentials={issued} onDone={() => navigate("../list")} />
       </div>
     );
   }

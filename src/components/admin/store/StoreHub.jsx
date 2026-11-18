@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Users, ShoppingBag, Layers, GitBranch, ShoppingCart, 
+  Users, ShoppingBag, Layers, GitBranch, ShoppingCart,
   Ruler, BarChart2, Package, AlertTriangle, TrendingUp, DollarSign
 } from "lucide-react";
 import {
@@ -11,9 +11,13 @@ import {
 import SectionCard from "../../ui/SectionCard";
 import QuickActionCard from "../../ui/QuickActionCard";
 import StatCard from "../../ui/StatCard";
-import { storeStats } from "../../../mock/storeData";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
+import { LoadState, EmptyState } from "../exam/ModuleState";
 
 const COLORS = ["#6366f1", "#3b82f6", "#10b981", "#f59e0b", "#ef4444"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const LOW_STOCK = 20;
 
 const StoreHub = () => {
   const navigate = useNavigate();
@@ -31,9 +35,46 @@ const StoreHub = () => {
     []
   );
 
+  const { data, loading, error, reload } = useAsync(async () => {
+    const [items, transactions] = await Promise.all([apiService.store.items.list(), apiService.store.transactions.list()]);
+    return { items, transactions };
+  });
+
+  const stats = useMemo(() => {
+    if (!data) return null;
+    const { items, transactions } = data;
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const revenue = (t) => t.quantity * (t.item?.unitPrice || 0);
+    const sales = transactions.filter((t) => t.type === "OUT");
+    const counts = {};
+    items.forEach((i) => {
+      const name = i.category || "Uncategorized";
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    const salesTrend = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return {
+        month: MONTHS[d.getMonth()],
+        sales: sales.filter((t) => (t.date || "").startsWith(key)).reduce((s, t) => s + revenue(t), 0),
+      };
+    });
+    return {
+      stockValue: items.reduce((s, i) => s + i.quantity * i.unitPrice, 0),
+      monthlySales: sales.filter((t) => (t.date || "").startsWith(monthKey)).reduce((s, t) => s + revenue(t), 0),
+      lowStock: items.filter((i) => i.quantity < LOW_STOCK).length,
+      totalProducts: items.length,
+      categoryDistribution: Object.entries(counts).map(([name, value]) => ({
+        name,
+        value: Math.round((value / items.length) * 100),
+      })),
+      salesTrend,
+    };
+  }, [data]);
+
   return (
     <div className="space-y-8">
-      {/* Quick Actions Grid */}
       <SectionCard title="Quick Actions" description="Store management and inventory workflows">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 p-6 pt-2">
           {modules.map((mod) => (
@@ -48,59 +89,67 @@ const StoreHub = () => {
         </div>
       </SectionCard>
 
-      {/* Stats Overview */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Stock Value" value={`₹${(storeStats.totalStockValue / 100000).toFixed(2)}L`} icon={<Package size={20} />} color="indigo" trend="+8%" />
-        <StatCard title="Monthly Sales" value={`₹${(storeStats.monthlySales / 1000).toFixed(1)}k`} icon={<DollarSign size={20} />} color="emerald" trend="+15%" />
-        <StatCard title="Low Stock Alert" value={storeStats.lowStockItems} icon={<AlertTriangle size={20} />} color="rose" isPositive={false} />
-        <StatCard title="Active Vendors" value={storeStats.vendorsCount} icon={<Users size={20} />} color="blue" />
-      </div>
+      <LoadState loading={loading} error={error} onRetry={reload} />
 
-      {/* Charts Section */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <SectionCard title="Inventory Distribution">
-          <div className="p-6 h-[300px] flex items-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={storeStats.categoryDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {storeStats.categoryDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-col gap-2 pr-4">
-               {storeStats.categoryDistribution.map((entry, index) => (
-                 <div key={index} className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                   <span className="text-xs font-bold text-slate-600 uppercase tracking-tighter">{entry.name} ({entry.value}%)</span>
-                 </div>
-               ))}
-            </div>
+      {stats && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Total Stock Value" value={`₹${stats.stockValue.toLocaleString()}`} icon={<Package size={20} />} color="indigo" />
+            <StatCard title="Monthly Sales" value={`₹${stats.monthlySales.toLocaleString()}`} icon={<DollarSign size={20} />} color="emerald" />
+            <StatCard title={`Low Stock (<${LOW_STOCK})`} value={stats.lowStock} icon={<AlertTriangle size={20} />} color="rose" isPositive={false} />
+            <StatCard title="Total Products" value={stats.totalProducts} icon={<TrendingUp size={20} />} color="blue" />
           </div>
-        </SectionCard>
 
-        <SectionCard title="Sales Performance Trend">
-          <div className="p-6 h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={storeStats.salesTrend}>
-                <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <Tooltip cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                <Area type="monotone" dataKey="sales" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" name="Sales Revenue" />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <SectionCard title="Inventory Distribution">
+              {stats.categoryDistribution.length === 0 ? (
+                <EmptyState>No products yet.</EmptyState>
+              ) : (
+                <div className="p-6 h-[300px] flex items-center">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={stats.categoryDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                        {stats.categoryDistribution.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex flex-col gap-2 pr-4">
+                    {stats.categoryDistribution.map((entry, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                        <span className="text-xs font-bold text-slate-600 uppercase tracking-tighter">{entry.name} ({entry.value}%)</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Sales Performance Trend">
+              <div className="p-6 h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={stats.salesTrend}>
+                    <defs>
+                      <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                    <Tooltip cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                    <Area type="monotone" dataKey="sales" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" name="Sales Revenue" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
           </div>
-        </SectionCard>
-      </div>
+        </>
+      )}
     </div>
   );
 };

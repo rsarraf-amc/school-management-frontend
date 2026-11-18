@@ -3,9 +3,24 @@ import { Download, DollarSign } from "lucide-react";
 import DataTable from "../../ui/DataTable";
 import FilterBar from "../../ui/FilterBar";
 import FilterItem from "../../ui/FilterItem";
-import { feesReports } from "../../../mock/reportsData";
+import StatusMessage from "../../ui/StatusMessage";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
 
 const FeesReport = () => {
+  const { data: payments, loading, error } = useAsync(async () => {
+    const list = await apiService.getFeePayments();
+    return (list || []).map((p) => ({
+      id: p.id,
+      receiptNo: p.receiptNumber || `R-${p.id}`,
+      studentName: [p.student?.firstName, p.student?.lastName].filter(Boolean).join(" "),
+      class: p.student?.class,
+      feeType: p.feeType?.name,
+      paidAmount: p.paidAmount,
+      date: (p.paidOn || "").slice(0, 10),
+    }));
+  }, []);
+
   const columns = [
     { header: "Receipt No", accessor: "receiptNo", render: (row) => <span className="font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded text-[10px] uppercase">{row.receiptNo}</span> },
     { header: "Student Name", accessor: "studentName", render: (row) => <span className="font-bold text-slate-900">{row.studentName}</span> },
@@ -61,7 +76,8 @@ const FeesReport = () => {
              </button>
           </div>
         </div>
-        <DataTable columns={columns} data={feesReports} />
+        <StatusMessage loading={loading} error={error} empty={!loading && !error && !payments?.length} />
+        <DataTable columns={columns} data={payments || []} />
       </div>
     </div>
   );

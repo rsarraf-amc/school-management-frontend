@@ -1,49 +1,42 @@
-import React from "react";
-import { Layers, Plus, Edit, Trash2 } from "lucide-react";
+import React, { useMemo } from "react";
+import { Layers } from "lucide-react";
 import DataTable from "../../ui/DataTable";
-import { categories } from "../../../mock/storeData";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
+import { LoadState, EmptyState, Notice } from "../exam/ModuleState";
 
 const CategoryManagement = () => {
+  const { data, loading, error, reload } = useAsync(() => apiService.store.items.list(), []);
+
+  const rows = useMemo(() => {
+    const map = new Map();
+    (data || []).forEach((item) => {
+      const name = item.category || "Uncategorized";
+      const entry = map.get(name) || { id: name, name, products: 0, stock: 0 };
+      entry.products += 1;
+      entry.stock += item.quantity || 0;
+      map.set(name, entry);
+    });
+    return [...map.values()];
+  }, [data]);
+
   const columns = [
     { header: "Category Name", accessor: "name", render: (row) => <span className="font-bold text-slate-900">{row.name}</span> },
-    { header: "Description", accessor: "description", render: (row) => <span className="text-slate-500 font-medium text-xs">{row.description}</span> },
-  ];
-
-  const actions = [
-    { icon: Edit, label: "Edit", onClick: () => {} },
-    { icon: Trash2, label: "Delete", onClick: () => {} },
+    { header: "Products", accessor: "products", render: (row) => <span className="font-bold text-slate-700">{row.products}</span> },
+    { header: "Units in Stock", accessor: "stock", render: (row) => <span className="font-bold text-slate-700">{row.stock}</span> },
   ];
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-      <div className="xl:col-span-1">
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 sticky top-8">
-          <h3 className="font-black text-slate-900 tracking-tight flex items-center gap-2 mb-6">
-             <Plus size={18} className="text-slate-600" /> Create Category
-          </h3>
-          <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-             <div className="space-y-2">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Category Name *</label>
-                <input type="text" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-slate-500/20" />
-             </div>
-             <div className="space-y-2">
-                <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">Description</label>
-                <textarea rows="3" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium resize-none"></textarea>
-             </div>
-             <button type="submit" className="w-full py-4 bg-slate-800 text-white rounded-2xl font-bold hover:bg-slate-900 transition-all text-sm shadow-lg flex items-center justify-center gap-2 mt-4">
-                <Plus size={18} /> Save Category
-             </button>
-          </form>
-        </div>
+    <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+      <div className="p-6 border-b border-slate-100 flex items-center gap-2 bg-slate-50/30">
+        <Layers size={18} className="text-blue-600" />
+        <h3 className="font-black text-slate-900 tracking-tight">Product Categories</h3>
       </div>
-      <div className="xl:col-span-2">
-         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/30">
-               <h3 className="font-black text-slate-900 tracking-tight">Product Categories</h3>
-            </div>
-            <DataTable columns={columns} data={categories} actions={actions} />
-         </div>
+      <div className="p-4">
+        <Notice>Categories come from the Category field of products. Add a product with a new category to create one.</Notice>
       </div>
+      <LoadState loading={loading} error={error} onRetry={reload} />
+      {!loading && !error && (rows.length ? <DataTable columns={columns} data={rows} /> : <EmptyState>No categories yet.</EmptyState>)}
     </div>
   );
 };

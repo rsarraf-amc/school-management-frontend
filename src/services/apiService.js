@@ -1,6 +1,57 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:4000")
   .replace(/\/+$/, "");
 
+// The backend returns PascalCase model columns (Id, FirstName, ...); the UI uses camelCase.
+const SENSITIVE_KEYS = new Set(["password", "loginPassword"]);
+const KEY_ALIASES = {
+  parentName: "guardianName",
+  parentPhone: "guardianPhone",
+  parentEmail: "guardianEmail",
+  parentOccupation: "guardianOccupation",
+  parentEducation: "guardianEducation",
+};
+
+const toCamelKey = (key) => {
+  const camel = key.charAt(0).toLowerCase() + key.slice(1);
+  return KEY_ALIASES[camel] || camel;
+};
+
+const normalize = (value) => {
+  if (Array.isArray(value)) return value.map(normalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, entry]) => [toCamelKey(key), entry])
+        .filter(([key]) => !SENSITIVE_KEYS.has(key))
+        // One-time issued credentials intentionally keep their password.
+        .map(([key, entry]) => [key, key === "credentials" ? entry : normalize(entry)]),
+    );
+  }
+  return value;
+};
+
+const ROLE_BY_ID = {
+  1: "admin", // System Admin
+  2: "admin", // School Admin
+  3: "teacher",
+  4: "student",
+};
+
+const decodeToken = (token) => {
+  try {
+    const part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(part)
+        .split("")
+        .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+        .join(""),
+    );
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+};
+
 const request = async (path, { body, headers = {}, ...options } = {}) => {
   const requestHeaders = new Headers(headers);
   const token = localStorage.getItem("token");
@@ -27,16 +78,31 @@ const request = async (path, { body, headers = {}, ...options } = {}) => {
   }
 
   if (!response.ok) {
-    throw new Error(payload.message || `Request failed (${response.status}).`);
+    if (response.status === 401 && token && path !== "/auth/login") {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      window.location.assign("/login");
+    }
+    const details = Array.isArray(payload.errors) ? ` ${payload.errors.join(" ")}` : "";
+    throw new Error(
+      `${payload.message || `Request failed (${response.status}).`}${details}`,
+    );
   }
 
-  return Object.prototype.hasOwnProperty.call(payload, "data")
-    ? payload.data
-    : payload;
+  return normalize(
+    Object.prototype.hasOwnProperty.call(payload, "data")
+      ? payload.data
+      : payload,
+  );
 };
 
 const collection = (path) => ({
-  list: () => request(path),
+  list: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== "" && v != null),
+    ).toString();
+    return request(query ? `${path}?${query}` : path);
+  },
   get: (id) => request(`${path}/${encodeURIComponent(id)}`),
   create: (data) => request(path, { method: "POST", body: data }),
   update: (id, data) =>
@@ -48,37 +114,41 @@ const collection = (path) => ({
     request(`${path}/${encodeURIComponent(id)}`, { method: "DELETE" }),
 });
 
-const mapRole = (role) => {
-  const normalized = String(role || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-
-  if (["admin", "organization_admin", "super_admin"].includes(normalized)) {
-    return "admin";
-  }
-  if (["teacher", "tutor"].includes(normalized)) return "teacher";
-  if (["student", "user"].includes(normalized)) return "student";
-  return normalized;
-};
-
 export const apiService = {
-  async login(email, password) {
+  // The backend login returns only { token }; the user is read from the JWT payload.
+  async login(identifier, password) {
+    const value = identifier.trim();
     const result = await request("/auth/login", {
       method: "POST",
-      body: { email, password },
+      body: {
+        [value.includes("@") ? "email" : "username"]: value,
+        password,
+      },
     });
 
-    if (!result?.token || !result?.user) {
-      throw new Error("The login response did not include a user and token.");
+    const claims = result?.token ? decodeToken(result.token) : null;
+    if (!claims) {
+      throw new Error("The login response did not include a valid token.");
     }
 
-    const role = mapRole(result.user.role);
-    if (!["admin", "teacher", "student"].includes(role)) {
+    const role = ROLE_BY_ID[claims.roleId];
+    if (!role) {
       throw new Error("This account role is not supported by the frontend.");
     }
 
-    return { ...result, user: { ...result.user, role } };
+    return {
+      token: result.token,
+      user: {
+        id: claims.id,
+        name: claims.username || claims.email,
+        email: claims.email,
+        username: claims.username,
+        roleId: claims.roleId,
+        studentId: claims.studentId ?? null,
+        teacherId: claims.teacherId ?? null,
+        role,
+      },
+    };
   },
 
   getAllStudents: () => request("/students/searchAll"),
@@ -137,6 +207,81 @@ export const apiService = {
   shifts: collection("/shifts"),
   organizations: collection("/organizations"),
 
+  attendance: {
+    ...collection("/attendance"),
+    saveBulk: (data) => request("/attendance/bulk", { method: "POST", body: data }),
+  },
+  library: {
+    books: collection("/library/books"),
+    issues: {
+      ...collection("/library/issues"),
+      returnBook: (id, data = {}) =>
+        request(`/library/issues/${encodeURIComponent(id)}/return`, { method: "PATCH", body: data }),
+    },
+  },
+  transport: {
+    vehicles: collection("/transport/vehicles"),
+    routes: collection("/transport/routes"),
+    assignments: collection("/transport/assignments"),
+    drivers: collection("/transport/drivers"),
+    stoppages: collection("/transport/stoppages"),
+    schedules: collection("/transport/schedules"),
+  },
+  exams: {
+    ...collection("/exams"),
+    results: collection("/exams/results"),
+  },
+  examSetup: {
+    types: collection("/exam-setup/types"),
+    grades: collection("/exam-setup/grades"),
+    observationTypes: collection("/exam-setup/observation-types"),
+    observations: collection("/exam-setup/observations"),
+    assessments: collection("/exam-setup/assessments"),
+  },
+  store: {
+    items: collection("/store/items"),
+    transactions: collection("/store/transactions"),
+    vendors: collection("/store/vendors"),
+    units: collection("/store/units"),
+    subCategories: collection("/store/sub-categories"),
+  },
+  academics: {
+    holidays: collection("/academics/holidays"),
+    classSubjects: collection("/academics/class-subjects"),
+    studentSubjects: collection("/academics/student-subjects"),
+    studentCategories: collection("/academics/student-categories"),
+    promote: (data) => request("/academics/promote", { method: "POST", body: data }),
+  },
+  accounts: {
+    expenseHeads: collection("/accounts/expense-heads"),
+    expenses: collection("/accounts/expenses"),
+    incomeHeads: collection("/accounts/income-heads"),
+    incomes: collection("/accounts/incomes"),
+  },
+  homework: {
+    ...collection("/homework"),
+    submissions: collection("/homework/submissions"),
+  },
+  communicate: {
+    notices: collection("/communicate/notices"),
+    sms: collection("/communicate/sms"),
+  },
+  frontOffice: {
+    visitors: {
+      ...collection("/front-office/visitors"),
+      checkout: (id) =>
+        request(`/front-office/visitors/${encodeURIComponent(id)}/checkout`, { method: "PATCH" }),
+    },
+    enquiries: collection("/front-office/enquiries"),
+    complaints: collection("/front-office/complaints"),
+    phoneLogs: collection("/front-office/phone-logs"),
+    postal: collection("/front-office/postal"),
+  },
+  timetable: {
+    ...collection("/timetable"),
+    subjects: collection("/timetable/subjects"),
+  },
+
   getFeeTypes: () => request("/fees/fee-types"),
   createFeeType: (data) =>
     request("/fees/fee-types", { method: "POST", body: data }),
@@ -144,19 +289,41 @@ export const apiService = {
   collectFee: (data) => request("/fees/collect", { method: "POST", body: data }),
   getStudentFeeReport: (studentId) =>
     request(`/fees/report/${encodeURIComponent(studentId)}`),
+  getFeePayments: () => request("/fees/payments"),
+  getFeeAssignments: () => request("/fees/assignments"),
   getEmployeePayroll: (employeeId) =>
     request(`/payroll/employee/${encodeURIComponent(employeeId)}`),
+  getPayrolls: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== "" && v != null),
+    ).toString();
+    return request(`/payroll/dashboard${query ? `?${query}` : ""}`);
+  },
+  createPayroll: (data) => request("/payroll", { method: "POST", body: data }),
+  payPayroll: (id, data) =>
+    request(`/payroll/${encodeURIComponent(id)}/pay`, { method: "PATCH", body: data }),
   registerUser: (data) =>
     request("/users/register", { method: "POST", body: data }),
 
-  async getTeacherClasses() {
-    throw new Error(
-      "The backend does not provide a teacher-to-class assignment endpoint.",
-    );
+  // Self-service endpoints for the signed-in teacher/student (linked via the login).
+  getTeacherClasses: () => request("/teachers/me/classes"),
+  getStudentProfile: () => request("/students/me"),
+  teacherSelf: {
+    profile: () => request("/teachers/me"),
+    classes: () => request("/teachers/me/classes"),
+    timetable: () => request("/teachers/me/timetable"),
   },
-  async getStudentProfile() {
-    throw new Error(
-      "The backend does not provide a student profile endpoint linked to the signed-in user.",
-    );
+  studentSelf: {
+    profile: () => request("/students/me"),
+    attendance: () => request("/students/me/attendance"),
+    exams: () => request("/students/me/exams"),
+    results: () => request("/students/me/results"),
+    timetable: () => request("/students/me/timetable"),
+    fees: () => request("/students/me/fees"),
   },
+  // Creates the portal login, or resets its password; the password is returned once.
+  issueStudentLogin: (id) =>
+    request(`/students/${encodeURIComponent(id)}/credentials`, { method: "POST", body: {} }),
+  issueTeacherLogin: (id) =>
+    request(`/teachers/${encodeURIComponent(id)}/credentials`, { method: "POST", body: {} }),
 };

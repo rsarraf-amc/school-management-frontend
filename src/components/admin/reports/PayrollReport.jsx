@@ -3,9 +3,25 @@ import { Download, FileText } from "lucide-react";
 import DataTable from "../../ui/DataTable";
 import FilterBar from "../../ui/FilterBar";
 import FilterItem from "../../ui/FilterItem";
-import { payrollReports } from "../../../mock/reportsData";
+import StatusMessage from "../../ui/StatusMessage";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
+import { ROLE_NAMES } from "../../../constants/roles";
 
 const PayrollReport = () => {
+  const { data: payrolls, loading, error } = useAsync(async () => {
+    const list = await apiService.getPayrolls();
+    return (list || []).map((r) => ({
+      id: r.id,
+      payslipId: `PS-${r.id}`,
+      staffName: [r.employee?.firstName, r.employee?.lastName].filter(Boolean).join(" "),
+      role: ROLE_NAMES[r.employee?.roleId] || r.employee?.roleId || "-",
+      monthYear: r.month,
+      netSalary: r.netSalary,
+      status: r.status === "PAID" ? "Paid" : "Due",
+    }));
+  }, []);
+
   const columns = [
     { header: "Payslip ID", accessor: "payslipId", render: (row) => <span className="font-black text-violet-600 bg-violet-50 px-2 py-0.5 rounded text-[10px] uppercase">{row.payslipId}</span> },
     { header: "Staff Name", accessor: "staffName", render: (row) => <span className="font-bold text-slate-900">{row.staffName}</span> },
@@ -60,7 +76,8 @@ const PayrollReport = () => {
              </button>
           </div>
         </div>
-        <DataTable columns={columns} data={payrollReports} />
+        <StatusMessage loading={loading} error={error} empty={!loading && !error && !payrolls?.length} />
+        <DataTable columns={columns} data={payrolls || []} />
       </div>
     </div>
   );

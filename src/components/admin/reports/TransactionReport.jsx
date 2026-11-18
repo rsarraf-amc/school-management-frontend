@@ -3,9 +3,40 @@ import { Download, TrendingUp } from "lucide-react";
 import DataTable from "../../ui/DataTable";
 import FilterBar from "../../ui/FilterBar";
 import FilterItem from "../../ui/FilterItem";
-import { transactionReports } from "../../../mock/reportsData";
+import StatusMessage from "../../ui/StatusMessage";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
 
 const TransactionReport = () => {
+  // Income = fee payments; salaries paid = expenses. No other ledger exists in the backend.
+  const { data: transactions, loading, error } = useAsync(async () => {
+    const [payments, payrolls] = await Promise.all([
+      apiService.getFeePayments(),
+      apiService.getPayrolls().catch(() => []),
+    ]);
+    const income = (payments || []).map((p) => ({
+      id: `F-${p.id}`,
+      transactionId: p.receiptNumber || `FEE-${p.id}`,
+      date: (p.paidOn || "").slice(0, 10),
+      type: "Income",
+      amount: p.paidAmount,
+      mode: "-",
+      description: `${p.feeType?.name || "Fee"} - ${[p.student?.firstName, p.student?.lastName].filter(Boolean).join(" ")}`,
+    }));
+    const expense = (payrolls || [])
+      .filter((r) => r.status === "PAID")
+      .map((r) => ({
+        id: `P-${r.id}`,
+        transactionId: `PAY-${r.id}`,
+        date: (r.updatedAt || r.createdAt || "").slice(0, 10),
+        type: "Expense",
+        amount: r.payableAmount,
+        mode: r.paymentMode || "-",
+        description: `Salary ${r.month} - ${[r.employee?.firstName, r.employee?.lastName].filter(Boolean).join(" ")}`,
+      }));
+    return [...income, ...expense].sort((a, b) => b.date.localeCompare(a.date));
+  }, []);
+
   const columns = [
     { header: "Transaction ID", accessor: "transactionId", render: (row) => <span className="font-black text-slate-600 bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase">{row.transactionId}</span> },
     { header: "Date", accessor: "date", render: (row) => <span className="text-slate-500 font-medium text-xs">{row.date}</span> },
@@ -67,7 +98,8 @@ const TransactionReport = () => {
              </button>
           </div>
         </div>
-        <DataTable columns={columns} data={transactionReports} />
+        <StatusMessage loading={loading} error={error} empty={!loading && !error && !transactions?.length} />
+        <DataTable columns={columns} data={transactions || []} />
       </div>
     </div>
   );

@@ -14,9 +14,8 @@ import {
 import StatCard from "../../ui/StatCard";
 import SectionCard from "../../ui/SectionCard";
 import QuickActionCard from "../../ui/QuickActionCard";
-import {
-  feesStats,
-} from "../../../mock/feesData";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -78,29 +77,55 @@ export default function FeesOverview() {
     },
   ];
 
-  const collectionTrend = [
-    { month: "Jan", collected: 68000, due: 18000 },
-    { month: "Feb", collected: 72000, due: 14500 },
-    { month: "Mar", collected: 81000, due: 12500 },
-    { month: "Apr", collected: 76000, due: 13800 },
-    { month: "May", collected: 84000, due: 9800 },
-    { month: "Jun", collected: 90000, due: 7200 },
-  ];
+  const { data } = useAsync(async () => {
+    const [payments, assignments] = await Promise.all([
+      apiService.getFeePayments(),
+      apiService.getFeeAssignments(),
+    ]);
+    return { payments: payments || [], assignments: assignments || [] };
+  });
+  const payments = data?.payments || [];
+  const assignments = data?.assignments || [];
+  const inr = (n) => `₹${Number(n || 0).toLocaleString()}`;
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const totalCollected = payments.reduce((t, p) => t + Number(p.paidAmount || 0), 0);
+  const totalAssigned = assignments.reduce((t, a) => t + Number(a.feeType?.amount || 0), 0);
+  const feesStats = {
+    totalCollected: inr(totalCollected),
+    pendingAmount: inr(Math.max(totalAssigned - totalCollected, 0)),
+    totalAssigned: inr(totalAssigned),
+    thisMonthCollected: inr(
+      payments
+        .filter((p) => String(p.paidOn || "").startsWith(currentMonth))
+        .reduce((t, p) => t + Number(p.paidAmount || 0), 0),
+    ),
+  };
 
-  const feeDistribution = [
-    { name: "Monthly", value: 48, color: "#10b981" },
-    { name: "Admission", value: 22, color: "#6366f1" },
-    { name: "Exam", value: 18, color: "#f59e0b" },
-    { name: "Transport", value: 12, color: "#ec4899" },
-  ];
+  const trendMap = {};
+  payments.forEach((p) => {
+    const month = String(p.paidOn || "").slice(0, 7);
+    if (month) trendMap[month] = (trendMap[month] || 0) + Number(p.paidAmount || 0);
+  });
+  const collectionTrend = Object.entries(trendMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, collected]) => ({ month, collected }));
+  const latestTrend = collectionTrend[collectionTrend.length - 1];
+
+  const palette = ["#10b981", "#6366f1", "#f59e0b", "#ec4899", "#0ea5e9", "#84cc16"];
+  const typeMap = {};
+  payments.forEach((p) => {
+    const name = p.feeType?.name || "Other";
+    typeMap[name] = (typeMap[name] || 0) + Number(p.paidAmount || 0);
+  });
+  const feeDistribution = Object.entries(typeMap).map(([name, amount], i) => ({
+    name,
+    value: totalCollected ? Math.round((amount / totalCollected) * 100) : 0,
+    color: palette[i % palette.length],
+  }));
 
   return (
-    <div className="space-y-8">
-      <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-        Collection totals and trend charts are sample previews; the backend does not currently expose aggregate fee reporting.
-      </p>
-
-      {/* Quick Actions Navigation */}
+          <div className="space-y-8">
+            {/* Quick Actions Navigation */}
       <SectionCard
         title="Quick Actions"
         description="Access fees modules quickly"
@@ -124,29 +149,29 @@ export default function FeesOverview() {
         <StatCard
           title="Total Collection"
           value={feesStats.totalCollected}
-          trend="+12.5%"
+          trend={`${payments.length} payments`}
           icon={<TrendingUp size={20} />}
           color="emerald"
         />
         <StatCard
           title="Fees Due"
           value={feesStats.pendingAmount}
-          trend="8 Students"
+          trend={`${assignments.length} assigned`}
           icon={<Clock size={20} />}
           color="amber"
           isPositive={false}
         />
         <StatCard
-          title="Overdue Amount"
-          value={feesStats.overdueAmount}
-          trend="Last 30 days"
+          title="Total Assigned"
+          value={feesStats.totalAssigned}
+          trend="All sessions"
           icon={<Wallet size={20} />}
           color="indigo"
         />
         <StatCard
           title="This Month"
           value={feesStats.thisMonthCollected}
-          trend="+₹400 today"
+          trend={currentMonth}
           icon={<AlertCircle size={20} />}
           color="rose"
         />
@@ -166,7 +191,7 @@ export default function FeesOverview() {
                 </h2>
               </div>
               <div className="rounded-3xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
-                Latest month collected ₹90,000
+                {latestTrend ? `Latest month collected ${inr(latestTrend.collected)}` : "No collections yet"}
               </div>
             </div>
           </div>
@@ -250,7 +275,7 @@ export default function FeesOverview() {
                 </h2>
               </div>
               <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black uppercase tracking-[0.24em] text-slate-500">
-                4 groups
+                {feeDistribution.length} groups
               </div>
             </div>
             <div className="h-56 md:h-64 xl:h-72">

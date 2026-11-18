@@ -1,37 +1,14 @@
 import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  BookOpen,
-  Users,
-  Layers,
-  Calendar,
-  UserPlus,
-  ArrowUpCircle,
-  FileText,
-  Clock,
-  PlusCircle,
-  Settings,
-  Grid
+  BookOpen, Users, Layers, Calendar, UserPlus, ArrowUpCircle, FileText, Clock, PlusCircle, Settings, Grid,
 } from "lucide-react";
-import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import SectionCard from "../../ui/SectionCard";
 import QuickActionCard from "../../ui/QuickActionCard";
 import StatCard from "../../ui/StatCard";
-import { academicsStats } from "../../../mock/academicsData";
-
-const COLORS = ["#10b981", "#ef4444", "#6366f1", "#f59e0b"];
+import { apiService } from "../../../services/apiService";
+import useAsync from "../../../hooks/useAsync";
 
 const AcademicsHub = () => {
   const navigate = useNavigate();
@@ -64,105 +41,72 @@ const AcademicsHub = () => {
         ],
       },
     ],
-    []
+    [],
+  );
+
+  const { data, loading, error } = useAsync(async () => {
+    const [classes, subjects, teachers, students] = await Promise.all([
+      apiService.getAllClasses(),
+      apiService.timetable.subjects.list(),
+      apiService.getAllTeachers(),
+      apiService.getAllStudents(),
+    ]);
+    return { classes, subjects, teachers, students };
+  }, { classes: [], subjects: [], teachers: [], students: [] });
+
+  const classLoad = useMemo(
+    () => data.classes.map((c) => ({
+      name: c.name,
+      count: data.students.filter((s) => String(s.classId) === String(c.id)).length,
+    })),
+    [data],
   );
 
   return (
     <div className="space-y-8">
-      {/* Quick Actions Grid */}
       <div className="grid gap-6 lg:grid-cols-1">
         {actionGroups.map((group) => (
           <SectionCard key={group.title} title={group.title}>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 p-6 pt-2">
               {group.items.map((item) => (
-                <QuickActionCard
-                  key={item.label}
-                  icon={item.icon}
-                  label={item.label}
-                  color={item.color}
-                  onClick={() => navigate(item.path)}
-                />
+                <QuickActionCard key={item.label} icon={item.icon} label={item.label} color={item.color} onClick={() => navigate(item.path)} />
               ))}
             </div>
           </SectionCard>
         ))}
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Classes"
-          value={academicsStats.totalClasses}
-          icon={<Layers size={20} />}
-          color="indigo"
-        />
-        <StatCard
-          title="Subjects"
-          value={academicsStats.totalSubjects}
-          icon={<BookOpen size={20} />}
-          color="emerald"
-        />
-        <StatCard
-          title="Faculty"
-          value={academicsStats.totalTeachers}
-          icon={<Users size={20} />}
-          color="amber"
-        />
-        <StatCard
-          title="Promotion Rate"
-          value={academicsStats.avgPromotionRate}
-          icon={<ArrowUpCircle size={20} />}
-          color="rose"
-        />
-      </div>
+      {error && <div className="p-4 rounded-2xl bg-rose-50 text-rose-700 text-sm font-medium">{error}</div>}
+      {loading ? (
+        <div className="p-8 text-center text-sm font-medium text-slate-500">Loading...</div>
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard title="Total Classes" value={data.classes.length} icon={<Layers size={20} />} color="indigo" />
+            <StatCard title="Subjects" value={data.subjects.length} icon={<BookOpen size={20} />} color="emerald" />
+            <StatCard title="Faculty" value={data.teachers.length} icon={<Users size={20} />} color="amber" />
+            <StatCard title="Students" value={data.students.length} icon={<Users size={20} />} color="rose" />
+          </div>
 
-      {/* Charts Section */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <SectionCard title="Promotion Success Rate">
-          <div className="p-6 h-[300px] flex items-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={academicsStats.promotionRateData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {academicsStats.promotionRateData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-col gap-2 pr-4">
-               {academicsStats.promotionRateData.map((entry, index) => (
-                 <div key={index} className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                   <span className="text-xs font-bold text-slate-600 uppercase tracking-tighter">{entry.name} ({entry.value}%)</span>
-                 </div>
-               ))}
+          <SectionCard title="Student Load by Class">
+            <div className="p-6 h-[300px]">
+              {classLoad.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={classLoad}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                    <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} />
+                    <Tooltip cursor={{ fill: "#f8fafc" }} contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)" }} />
+                    <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} name="Students" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm font-medium text-slate-500">No classes found.</div>
+              )}
             </div>
-          </div>
-        </SectionCard>
-
-        <SectionCard title="Student Load by Class">
-          <div className="p-6 h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={academicsStats.classDistributionData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </SectionCard>
-      </div>
+          </SectionCard>
+        </>
+      )}
     </div>
   );
 };

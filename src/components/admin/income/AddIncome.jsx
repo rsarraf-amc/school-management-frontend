@@ -1,18 +1,24 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Save, X, Upload } from "lucide-react";
-import { incomeHeads } from "../../../mock/incomeData";
+import { Save, X } from "lucide-react";
+import useAsync from "../../../hooks/useAsync";
+import { apiService } from "../../../services/apiService";
 
 const AddIncome = () => {
   const navigate = useNavigate();
+  const { data: incomeHeads, loading, error: loadError } = useAsync(
+    () => apiService.accounts.incomeHeads.list(),
+    []
+  );
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [formData, setFormData] = useState({
     incomeHead: "",
     name: "",
     invoiceNo: "",
     date: new Date().toISOString().split('T')[0],
     amount: "",
-    description: "",
-    document: null
+    description: ""
   });
 
   const handleChange = (e) => {
@@ -20,11 +26,25 @@ const AddIncome = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Saving Income:", formData);
-    alert("Income saved successfully! (Mock)");
-    navigate("/admin/income/search");
+    setSaving(true);
+    setSaveError("");
+    try {
+      await apiService.accounts.incomes.create({
+        headId: Number(formData.incomeHead),
+        name: formData.name.trim(),
+        amount: Number(formData.amount),
+        date: formData.date,
+        invoiceNumber: formData.invoiceNo.trim() || undefined,
+        description: formData.description.trim() || undefined,
+      });
+      navigate("/admin/income");
+    } catch (requestError) {
+      setSaveError(requestError.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -41,6 +61,11 @@ const AddIncome = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
+          {(loadError || saveError) && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-700">
+              {saveError || loadError}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Income Head */}
             <div className="space-y-2">
@@ -54,9 +79,9 @@ const AddIncome = () => {
                 value={formData.incomeHead}
                 onChange={handleChange}
               >
-                <option value="">Select Category</option>
+                <option value="">{loading ? "Loading..." : "Select Category"}</option>
                 {incomeHeads.map(head => (
-                  <option key={head.id} value={head.name}>{head.name}</option>
+                  <option key={head.id} value={head.id}>{head.name}</option>
                 ))}
               </select>
             </div>
@@ -116,6 +141,8 @@ const AddIncome = () => {
                 type="number"
                 name="amount"
                 required
+                min="0.01"
+                step="0.01"
                 placeholder="0.00"
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-medium"
                 value={formData.amount}
@@ -123,21 +150,13 @@ const AddIncome = () => {
               />
             </div>
 
-            {/* File Upload */}
+            {/* Attachments are not supported by the backend */}
             <div className="space-y-2">
               <label className="text-xs font-black text-slate-500 uppercase tracking-widest ml-1">
                 Attach Document
               </label>
-              <div className="relative group">
-                <input
-                  type="file"
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  onChange={(e) => setFormData(prev => ({ ...prev, document: e.target.files[0] }))}
-                />
-                <div className="w-full px-4 py-3 bg-slate-50 border border-slate-200 border-dashed rounded-2xl group-hover:bg-slate-100 transition-all text-sm font-medium flex items-center gap-3 text-slate-500">
-                  <Upload size={18} />
-                  {formData.document ? formData.document.name : "Choose file or drag here"}
-                </div>
+              <div className="w-full px-4 py-3 bg-slate-50 border border-slate-200 border-dashed rounded-2xl text-sm font-medium text-slate-400">
+                Document upload is not available yet.
               </div>
             </div>
           </div>
@@ -168,10 +187,11 @@ const AddIncome = () => {
             </button>
             <button
               type="submit"
-              className="px-8 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all text-sm shadow-lg shadow-emerald-100 flex items-center gap-2"
+              disabled={saving}
+              className="px-8 py-3 disabled:opacity-50 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all text-sm shadow-lg shadow-emerald-100 flex items-center gap-2"
             >
               <Save size={18} />
-              Save Income
+              {saving ? "Saving..." : "Save Income"}
             </button>
           </div>
         </form>
